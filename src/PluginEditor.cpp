@@ -1,0 +1,197 @@
+#include "PluginEditor.h"
+
+using namespace vspd;
+namespace
+{
+constexpr int designWidth = 660, designHeight = 330;
+constexpr auto defaultHint = "shift-drag fine  .  double-click reset  .  type values";
+void setHelp(juce::Component& component, const juce::String& text)
+{
+    component.getProperties().set("help", text);
+}
+void caption(juce::Graphics& g, const juce::String& text, float x, float y)
+{
+    g.setFont(uiFont(9.5f));
+    g.setColour(juce::Colour(col::mid));
+    g.drawSingleLineText(text, juce::roundToInt(x), juce::roundToInt(y), juce::Justification::horizontallyCentred);
+}
+}
+
+DistMultiplyEditor::DistMultiplyEditor(DistMultiplyProcessor& p)
+    : AudioProcessorEditor(p), effectProcessor(p)
+{
+    setLookAndFeel(&look);
+    addMouseListener(this, true);
+    addAndMakeVisible(surface);
+    surface.setInterceptsMouseClicks(false, true);
+    for (auto* component : std::initializer_list<juce::Component*>{&mode, &gain, &mix})
+        surface.addAndMakeVisible(component);
+    mode.addItemList({"L/R", "In/Sidechain"}, 1);
+    const auto setupKnob = [](juce::Slider& slider, double initial, const juce::String& help)
+    {
+        slider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+        slider.setRotaryParameters(kRotaryStart, kRotaryEnd, true);
+        slider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 112, 26);
+        slider.setDoubleClickReturnValue(true, initial);
+        setHelp(slider, help);
+    };
+    setupKnob(gain, 1.0, "Linear output gain after the dry/wet blend. 0-2x; no limiter or clipping stage.");
+    setupKnob(mix, 100.0, "Dry/wet blend. L/R dry is the mono average of both inputs.");
+    modeAttachment = std::make_unique<ComboAttachment>(p.parameters, "mode", mode);
+    gainAttachment = std::make_unique<SliderAttachment>(p.parameters, "gain", gain);
+    mixAttachment = std::make_unique<SliderAttachment>(p.parameters, "mix", mix);
+    gain.textFromValueFunction = [](double v) { return juce::String(v, 2) + " x"; };
+    mix.textFromValueFunction = [](double v) { return juce::String(v, 1) + " %"; };
+    for (auto* slider : {&gain, &mix})
+    {
+        slider->valueFromTextFunction = [](const juce::String& text) { return text.getDoubleValue(); };
+        slider->updateText();
+    }
+    mode.onChange = [this] { updateRouting(); repaint(); };
+    helpMark.setText("?", juce::dontSendNotification);
+    helpMark.setFont(monoFont(9.0f));
+    helpMark.setJustificationType(juce::Justification::centred);
+    helpMark.setColour(juce::Label::textColourId, juce::Colour(col::dim));
+    setHelp(helpMark, "Hover controls for help");
+    surface.addAndMakeVisible(helpMark);
+    contextHelpLabel.setBorderSize({});
+    contextHelpLabel.setFont(monoFont(8.0f));
+    contextHelpLabel.setColour(juce::Label::textColourId, juce::Colour(col::dim).withAlpha(0.8f));
+    contextHelpLabel.setJustificationType(juce::Justification::centredLeft);
+    contextHelpLabel.setMinimumHorizontalScale(0.8f);
+    contextHelpLabel.setInterceptsMouseClicks(false, false);
+    contextHelpLabel.setText(defaultHint, juce::dontSendNotification);
+    surface.addAndMakeVisible(contextHelpLabel);
+    setResizable(true, true);
+    setResizeLimits(528, 264, 1320, 660);
+    getConstrainer()->setFixedAspectRatio(static_cast<double>(designWidth) / designHeight);
+    setSize(designWidth, designHeight);
+    updateRouting();
+    startTimerHz(15);
+}
+
+DistMultiplyEditor::~DistMultiplyEditor()
+{
+    stopTimer();
+    removeMouseListener(this);
+    setLookAndFeel(nullptr);
+}
+
+void DistMultiplyEditor::resized()
+{
+    surface.setBounds(0, 0, designWidth, designHeight);
+    surface.setTransform(juce::AffineTransform::scale(static_cast<float>(getWidth()) / designWidth));
+    mode.setBounds(24, 144, 186, 28);
+    gain.setBounds(288, 112, 112, 142);
+    mix.setBounds(490, 112, 112, 142);
+    helpMark.setBounds(628, 306, 16, 18);
+    contextHelpLabel.setBounds(20, 306, 598, 18);
+}
+
+void DistMultiplyEditor::mouseEnter(const juce::MouseEvent& event)
+{
+    hoveredHelp = nullptr;
+    // Text fields and other children inherit their control's description.
+    for (auto* component = event.eventComponent; component != nullptr; component = component->getParentComponent())
+    {
+        if (component->getProperties()["help"].toString().isNotEmpty())
+        {
+            hoveredHelp = component;
+            break;
+        }
+        if (component == this) break;
+    }
+    updateStatus();
+}
+
+void DistMultiplyEditor::mouseExit(const juce::MouseEvent&)
+{
+    hoveredHelp = nullptr;
+    updateStatus();
+}
+
+void DistMultiplyEditor::updateStatus()
+{
+    auto text = hoveredHelp != nullptr ? hoveredHelp->getProperties()["help"].toString()
+                                       : juce::String(defaultHint);
+    if (hoveredHelp == &helpMark)
+    {
+        const auto sampleRate = effectProcessor.getSampleRate();
+        const auto blockSize = effectProcessor.getBlockSize();
+        text << "  |  " << juce::String(sampleRate, 0) << " Hz | " << blockSize << " smp";
+        if (sampleRate > 0.0) text << " | " << juce::String(blockSize * 1000.0 / sampleRate, 1) << " ms";
+        if (audioDeviceName)
+        {
+            const auto name = audioDeviceName();
+            if (name.isNotEmpty()) text << " | " << name;
+        }
+        text << " | v" << DISTMULTIPLY_VERSION << " (" << __DATE__ << ")";
+    }
+    if (contextHelpLabel.getText() != text)
+        contextHelpLabel.setText(text, juce::dontSendNotification);
+}
+
+void DistMultiplyEditor::updateRouting()
+{
+    const bool mono = effectProcessor.isMonoInput();
+    mode.setItemEnabled(1, !mono);
+    mode.setEnabled(!mono);
+    if (mono) mode.setSelectedId(2, juce::dontSendNotification);
+    else mode.setSelectedId(juce::roundToInt(effectProcessor.parameters.getRawParameterValue("mode")->load()) + 1,
+                            juce::dontSendNotification);
+    setHelp(mode, mono ? "Mono input always uses In/Sidechain. Mode is fixed."
+                       : "L/R multiplies left by right into mono. In/Sidechain multiplies matching channels.");
+    lastMono = mono;
+    lastSide = effectProcessor.usesSidechain();
+    lastConnected = effectProcessor.hasSidechain();
+    updateStatus();
+}
+
+void DistMultiplyEditor::timerCallback()
+{
+    // Also correct the visible mode when host automation changes a disabled
+    // mode parameter on a mono instance: the effective mode remains sidechain.
+    if (lastMono != effectProcessor.isMonoInput() || lastSide != effectProcessor.usesSidechain()
+        || lastConnected != effectProcessor.hasSidechain() || (lastMono && mode.getSelectedId() != 2))
+    {
+        updateRouting();
+        repaint();
+    }
+    updateStatus();
+}
+
+void DistMultiplyEditor::paint(juce::Graphics& g)
+{
+    g.fillAll(juce::Colour(col::background));
+    g.addTransform(juce::AffineTransform::scale(static_cast<float>(getWidth()) / designWidth));
+    g.setColour(juce::Colour(col::mid));
+    drawTracked(g, uiFont(10.0f, true), "DISTORT : MULTIPLY", 24.0f, 25.0f, 3.0f);
+    g.setFont(monoFont(8.0f));
+    g.setColour(juce::Colour(col::dim));
+    g.drawText("v" DISTMULTIPLY_VERSION, 550, 11, 86, 20, juce::Justification::centredRight);
+    g.setColour(juce::Colour(col::divider).withAlpha(0.6f));
+    g.drawHorizontalLine(38, 0.0f, static_cast<float>(designWidth));
+    g.drawHorizontalLine(296, 0.0f, static_cast<float>(designWidth));
+    g.drawVerticalLine(234, 52.0f, 282.0f);
+    g.setColour(juce::Colour(col::heading));
+    drawTrackedCentred(g, uiFont(14.0f), "SOURCES", 117.0f, 77.0f, 2.6f);
+    drawTrackedCentred(g, uiFont(14.0f), "OUTPUT", 447.0f, 77.0f, 2.6f);
+    caption(g, "Mode", 117.0f, 132.0f);
+    caption(g, "Gain", 344.0f, 107.0f);
+    caption(g, "Mix", 546.0f, 107.0f);
+    g.setFont(monoFont(7.5f));
+    g.setColour(juce::Colour(col::dim));
+    g.drawText(lastSide ? (lastMono ? "mono input / sidechain" : "main input / sidechain")
+                        : "left * right -> mono", 20, 235, 194, 18, juce::Justification::centred);
+    if (lastSide && !lastConnected)
+    {
+        g.setColour(juce::Colour(col::warn));
+        g.drawText("connect sidechain / dry through", 16, 257, 202, 17, juce::Justification::centred);
+    }
+    else
+        g.drawText(lastSide ? "independent channels" : "sample-by-sample product",
+                   20, 257, 194, 17, juce::Justification::centred);
+    g.setColour(juce::Colour(col::dim));
+    g.drawText("0 - 2x", 288, 262, 112, 18, juce::Justification::centred);
+    g.drawText("dry / wet", 490, 262, 112, 18, juce::Justification::centred);
+}
