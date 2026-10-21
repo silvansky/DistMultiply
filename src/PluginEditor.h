@@ -34,14 +34,14 @@ private:
     DistMultiplyProcessor& effectProcessor;
     VarispeedLookAndFeel look;
     juce::Component surface;
-    juce::ComboBox mode;
-    FineSlider gain, mix;
+    juce::ComboBox mode, oversampling;
+    FineSlider gain, mix, dcBlock, mainOffset, sidechainOffset;
     juce::Label helpMark, contextHelpLabel;
     juce::Component::SafePointer<juce::Component> hoveredHelp;
     using SliderAttachment = juce::AudioProcessorValueTreeState::SliderAttachment;
     using ComboAttachment = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
-    std::unique_ptr<ComboAttachment> modeAttachment;
-    std::unique_ptr<SliderAttachment> gainAttachment, mixAttachment;
+    std::unique_ptr<ComboAttachment> modeAttachment, oversamplingAttachment;
+    std::unique_ptr<SliderAttachment> gainAttachment, mixAttachment, dcAttachment, mainOffsetAttachment, sidechainOffsetAttachment;
     bool lastMono = false, lastSide = false, lastConnected = false;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DistMultiplyEditor)
 };

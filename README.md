@@ -15,9 +15,13 @@ Builds VST3, AU on macOS, and a custom standalone app with hardware sidechain ro
 | Mode | L/R, In/Sidechain | L/R | Selects the two sources. Mono main input always uses In/Sidechain. |
 | Gain | 0–2x | 1x | Linear output gain after mixing. |
 | Mix | 0–100% | 100% | Linear dry/wet blend. |
+| Oversampling | 1x, 2x, 4x | 2x | Antialias filtering around the multiplier. |
+| DC block | 0–20 Hz | 15 Hz | Final first-order high-pass filter; 0 Hz bypasses it. |
+| Main offset | -1–1 | 0 | Adds DC to both main input channels before multiplication. |
+| Sidechain offset | -1–1 | 0 | Adds DC to sidechain channels before multiplication. |
 
-Gain and Mix changes ramp over 10 ms. Knobs support typed values, double-click
-reset, and shift-drag fine adjustment. Hover controls for footer help, or the
+Gain, Mix, offsets, and DC cutoff changes ramp over 10 ms. Knobs support typed
+values, double-click reset, and shift-drag fine adjustment. Hover controls for footer help, or the
 question mark for audio configuration and version information. The editor resizes
 with a fixed aspect ratio.
 
@@ -26,11 +30,11 @@ Multiplication does not capture cycles or switch between sources.
 
 ## Signal routing
 
-- **L/R:** `wet = inputLeft * inputRight`. The dry signal is
+- **L/R:** `wet = (inputLeft + mainOffset) * (inputRight + mainOffset)`. The dry signal is
   `(inputLeft + inputRight) / 2`. Stereo output is identical on both channels at
   every Mix setting. A connected sidechain is ignored in this mode.
-- **In/Sidechain:** `wetLeft = inputLeft * sidechainLeft` and
-  `wetRight = inputRight * sidechainRight`. Processing is always independent per
+- **In/Sidechain:** `wetLeft = (inputLeft + mainOffset) * (sidechainLeft + sidechainOffset)` and
+  `wetRight = (inputRight + mainOffset) * (sidechainRight + sidechainOffset)`. Processing is always independent per
   channel. The dry signal is the main input.
 - Main input, sidechain, and output support mono/stereo independently. Mono
   sources are duplicated before multiplication; mono output averages the two
@@ -38,17 +42,30 @@ Multiplication does not capture cycles or switch between sources.
   automates Mode to L/R.
 - A disabled sidechain passes the main input through Gain, preserving the
   DistInterleave routing convention. An enabled silent sidechain produces zero
-  wet signal. The dry portion remains audible when Mix is below 100%.
+  wet signal when Sidechain offset is zero. The dry portion remains audible when
+  Mix is below 100%.
 
-Each output is `Gain * ((1 - Mix/100) * dry + (Mix/100) * wet)`.
+Offsets affect only the multiplier; the dry signal retains its original DC level.
+Sidechain offset is inactive in L/R mode. Both offsets are inactive when an
+unconnected sidechain causes dry passthrough.
+
+Before DC blocking, each output is `Gain * ((1 - Mix/100) * dry + (Mix/100) * wet)`.
+At 2x/4x, polyphase IIR filters upsample the sources before multiplication and
+filter the result before downsampling. The dry path shares these filters to
+keep the blend aligned. All settings use the same small, host-reported latency,
+including a matching delay at 1x, so automation never changes host compensation.
+Changing Oversampling resets its resampling history. The final DC blocker acts
+after downsampling, mixing, and Gain, including on dry passthrough.
 There is no threshold, gate, clipping, saturation, normalization, or limiter.
 Small signals are multiplied normally, and values above unity are preserved.
-Processing adds zero latency and has no tail. The audio callback does not
-allocate storage or wait for cycle boundaries.
+Processing reports no tail. The audio callback does not allocate storage, change
+latency, or wait for cycle boundaries.
 
 The plugin has its own identity (`Dmtp`, `com.silvansky.DistMultiply`) and state
 root (`DistMultiplyState`), so it can coexist with DistInterleave. Its parameter
-IDs are `mode`, `gain`, and `mix`.
+IDs are `mode`, `gain`, `mix`, `oversampling`, `dcBlock`, `mainOffset`, and
+`sidechainOffset`. Earlier states retain their original controls and receive the
+new controls' defaults.
 
 ## Build
 
@@ -89,9 +106,11 @@ are silent. A separate output menu selects mono or stereo hardware output.
 Processor tests verify products and mixing against sample values across every
 supported layout, including aliased mono-to-stereo sidechain storage, silence,
 small signals, signs, values above unity, block-size independence, smoothing,
-parameter defaults, and state restoration. On macOS the AU smoke test loads the
-built bundle directly and verifies rendered samples in all eight enabled
-sidechain layouts without installing it.
+parameter defaults, offset routing, oversampling alias rejection, DC blocking,
+and state restoration (including older sessions). On macOS the AU smoke test
+loads the built bundle directly and verifies all eight enabled sidechain layouts at every
+oversampling setting without installing it, checking exact products at 1x with
+DC blocking bypassed.
 
 ```sh
 cmake --build build --target DistMultiplyShot --parallel 6

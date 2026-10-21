@@ -41,7 +41,7 @@ target_compile_definitions(DistMultiply PUBLIC
     DISTMULTIPLY_VERSION="${PROJECT_VERSION}"
     JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0)
 target_link_libraries(DistMultiply PRIVATE juce::juce_audio_utils
-    PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
+    PUBLIC juce::juce_dsp juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
 
 # A custom standalone exposes all four hardware inputs; JUCE's default wrapper
 # only exposes the main bus in its audio-device selector.
@@ -56,7 +56,7 @@ target_include_directories(DistMultiply_Standalone PRIVATE src)
 target_compile_features(DistMultiply_Standalone PRIVATE cxx_std_20)
 target_compile_definitions(DistMultiply_Standalone PRIVATE
     DISTMULTIPLY_VERSION="${PROJECT_VERSION}" JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
-target_link_libraries(DistMultiply_Standalone PRIVATE juce::juce_audio_utils
+target_link_libraries(DistMultiply_Standalone PRIVATE juce::juce_audio_utils juce::juce_dsp
     juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
 
 if(APPLE)

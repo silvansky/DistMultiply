@@ -1,5 +1,7 @@
 #pragma once
 #include <juce_audio_utils/juce_audio_utils.h>
+#include <juce_dsp/juce_dsp.h>
+#include <array>
 
 class DistMultiplyProcessor final : public juce::AudioProcessor
 {
@@ -35,7 +37,19 @@ private:
     std::atomic<float>* mode = nullptr;
     std::atomic<float>* gain = nullptr;
     std::atomic<float>* mix = nullptr;
+    std::atomic<float>* oversampling = nullptr;
+    std::atomic<float>* dcBlock = nullptr;
+    std::atomic<float>* mainOffset = nullptr;
+    std::atomic<float>* sidechainOffset = nullptr;
     std::atomic<bool> monoInput { false }, sidechainPresent { false };
-    juce::SmoothedValue<float> gainRamp, mixRamp;
+    juce::SmoothedValue<float> gainRamp, mixRamp, mainOffsetRamp, sidechainOffsetRamp, dcRamp;
+    std::array<std::unique_ptr<juce::dsp::Oversampling<float>>, 2> oversamplers;
+    juce::AudioBuffer<float> scratch;
+    std::array<int, 3> paddingSamples {};
+    // A fixed latency across settings keeps automation independent of host PDC updates.
+    std::array<std::array<float, 32>, 2> padding {};
+    int paddingPosition = 0, activeOversampling = -1;
+    double processingRate = 48000.0, previousCutoff = -1.0, dcA = 0.0, dcB = 1.0;
+    std::array<double, 2> dcInput {}, dcOutput {};
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DistMultiplyProcessor)
 };

@@ -46,6 +46,7 @@ int main(int argc, char** argv)
         std::fputs("AudioComponentRegister failed (macOS service access may be sandboxed)\n", stderr);
         return 5;
     }
+    for (int selection : {0, 1, 2})
     for (UInt32 main : {1u, 2u})
         for (UInt32 side : {1u, 2u})
             for (UInt32 output : {1u, 2u})
@@ -66,14 +67,13 @@ int main(int argc, char** argv)
                 for (UInt32 bus : {0u, 1u})
                     check(AudioUnitSetProperty(unit, kAudioUnitProperty_SetRenderCallback,
                           kAudioUnitScope_Input, bus, &callback, sizeof(callback)), "Set input callback");
-                check(AudioUnitInitialize(unit), "Initialize");
                 UInt32 size = 0;
                 check(AudioUnitGetPropertyInfo(unit, kAudioUnitProperty_ParameterList, kAudioUnitScope_Global,
                       0, &size, nullptr), "Parameter list");
-                std::array<AudioUnitParameterID, 3> ids {};
+                std::array<AudioUnitParameterID, 7> ids {};
                 if (size != sizeof(ids))
                 {
-                    std::fputs("Expected three AU parameters\n", stderr);
+                    std::fputs("Expected seven AU parameters\n", stderr);
                     return 6;
                 }
                 check(AudioUnitGetProperty(unit, kAudioUnitProperty_ParameterList, kAudioUnitScope_Global,
@@ -86,9 +86,19 @@ int main(int argc, char** argv)
                           id, &info, &infoSize), "Read parameter info");
                     if (std::strcmp(info.name, "Mode") == 0)
                         check(AudioUnitSetParameter(unit, id, kAudioUnitScope_Global, 0, 1, 0), "Select sidechain");
+                    if (std::strcmp(info.name, "Oversampling") == 0)
+                        check(AudioUnitSetParameter(unit, id, kAudioUnitScope_Global, 0, static_cast<float>(selection), 0), "Set oversampling");
+                    if (selection == 0 && std::strcmp(info.name, "DC Block") == 0)
+                        check(AudioUnitSetParameter(unit, id, kAudioUnitScope_Global, 0, 0, 0), "Bypass DC block for exact product check");
                     if ((info.flags & kAudioUnitParameterFlag_CFNameRelease) && info.cfNameString)
                         CFRelease(info.cfNameString);
                 }
+                check(AudioUnitInitialize(unit), "Initialize");
+                Float64 latencySeconds = 0;
+                UInt32 latencySize = sizeof(latencySeconds);
+                check(AudioUnitGetProperty(unit, kAudioUnitProperty_Latency, kAudioUnitScope_Global,
+                      0, &latencySeconds, &latencySize), "Read latency");
+                const int latency = static_cast<int>(std::lround(latencySeconds * 48000.0));
                 std::array<std::array<float, 128>, 2> samples {};
                 struct Buffers { UInt32 count; AudioBuffer buffers[2]; } buffers {output, {}};
                 for (UInt32 c = 0; c < output; ++c)
@@ -107,15 +117,17 @@ int main(int argc, char** argv)
                         {
                             const auto source = [&](UInt32 bus, UInt32 channel)
                             {
-                                return static_cast<float>(0.4 * std::sin((time.mSampleTime + i) * 0.05 * (1 + bus + channel)));
+                                return time.mSampleTime + i < latency ? 0.0f
+                                    : static_cast<float>(0.4 * std::sin((time.mSampleTime + i - latency) * 0.05 * (1 + bus + channel)));
                             };
                             const float left = source(0, 0) * source(1, 0);
                             const float right = source(0, main - 1) * source(1, side - 1);
                             const float expected = output == 1 ? (left + right) * 0.5f : (c == 0 ? left : right);
                             const float sample = samples[c][i];
-                            if (!std::isfinite(sample) || std::abs(sample - expected) > 1.0e-6f)
+                            if (!std::isfinite(sample) || (selection == 0 && std::abs(sample - expected) > 1.0e-6f))
                             {
-                                std::fputs("AU output must match the input/sidechain product\n", stderr);
+                                std::fprintf(stderr, "AU output mismatch: %dx %u/%u/%u, sample %.0f, channel %u: %.9g != %.9g\n",
+                                    1 << selection, main, side, output, time.mSampleTime + i, c, sample, expected);
                                 return 7;
                             }
                             energy += sample * sample;
@@ -125,6 +137,6 @@ int main(int argc, char** argv)
                 check(AudioUnitUninitialize(unit), "Uninitialize");
                 check(AudioComponentInstanceDispose(unit), "Dispose");
             }
-    std::puts("AU loaded and rendered all 8 enabled-sidechain mono/stereo layouts");
+    std::puts("AU loaded and rendered all 8 enabled-sidechain mono/stereo layouts at 1x/2x/4x");
     CFRelease(bundle);
 }
