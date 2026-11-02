@@ -24,7 +24,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout DistMultiplyProcessor::makeP
     layout.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID{"mode", 1}, "Mode",
         juce::StringArray{"L/R", "In/Sidechain"}, 0));
     layout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID{"gain", 1}, "Gain",
-        juce::NormalisableRange<float>{0.0f, 2.0f, 0.001f}, 1.0f));
+        juce::NormalisableRange<float>{0.0f, 8.0f, 0.001f}, 1.0f));
     layout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID{"mix", 1}, "Mix",
         juce::NormalisableRange<float>{0.0f, 100.0f, 0.01f}, 100.0f));
     layout.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID{"oversampling", 1}, "Oversampling",

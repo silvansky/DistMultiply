@@ -236,7 +236,7 @@ int main()
             for (int out : {1, 2})
                 for (int mode : {0, 1})
                     for (float mix : {0.0f, 37.0f, 100.0f})
-                        for (float gain : {0.0f, 1.0f, 2.0f})
+                        for (float gain : {0.0f, 1.0f, 2.0f, 8.0f})
                             require(render(1, main, side, out, mode, mix, gain)
                                         == render(127, main, side, out, mode, mix, gain),
                                     "Output must be independent of host block size");
@@ -308,7 +308,7 @@ int main()
     buses.inputBuses.set(0, juce::AudioChannelSet::disabled());
     require(!p.isBusesLayoutSupported(buses), "Main input must be enabled");
 
-    set(p, "mode", 1); set(p, "gain", 1.75f); set(p, "mix", 37);
+    set(p, "mode", 1); set(p, "gain", 8.0f); set(p, "mix", 37);
     set(p, "oversampling", 2); set(p, "dcBlock", 8.5f);
     set(p, "mainOffset", -0.4f); set(p, "sidechainOffset", 0.7f);
     juce::MemoryBlock state;

@@ -37,7 +37,7 @@ DistMultiplyEditor::DistMultiplyEditor(DistMultiplyProcessor& p)
         slider.setDoubleClickReturnValue(true, initial);
         setHelp(slider, help);
     };
-    setupKnob(gain, 1.0, "Linear output gain after the dry/wet blend. 0-2x; no limiter or clipping stage.");
+    setupKnob(gain, 1.0, "Linear output gain after the dry/wet blend. 0-8x; no limiter or clipping stage.");
     setupKnob(mix, 100.0, "Dry/wet blend. L/R dry is the mono average of both inputs.");
     setupKnob(dcBlock, 15.0, "Final output high-pass filter removes DC. 0-20 Hz; 0 Hz bypasses the filter.");
     setupKnob(mainOffset, 0.0, "Offset added to main inputs before multiplication. -1 to +1; dry signal is unchanged.");
@@ -218,7 +218,7 @@ void DistMultiplyEditor::paint(juce::Graphics& g)
         g.drawText(lastSide ? "independent channels" : "main offset applies to L and R",
                    24, 335, 302, 17, juce::Justification::centred);
     g.setColour(juce::Colour(col::dim));
-    g.drawText("0 - 2x", 374, 335, 112, 18, juce::Justification::centred);
+    g.drawText("0 - 8x", 374, 335, 112, 18, juce::Justification::centred);
     g.drawText("dry / wet", 514, 335, 112, 18, juce::Justification::centred);
     g.drawText("0 Hz = off", 654, 335, 112, 18, juce::Justification::centred);
 }

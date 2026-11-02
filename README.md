@@ -13,7 +13,7 @@ Builds VST3, AU on macOS, and a custom standalone app with hardware sidechain ro
 | Control | Range | Default | Behavior |
 | --- | --- | --- | --- |
 | Mode | L/R, In/Sidechain | L/R | Selects the two sources. Mono main input always uses In/Sidechain. |
-| Gain | 0–2x | 1x | Linear output gain after mixing. |
+| Gain | 0–8x | 1x | Linear output gain after mixing. |
 | Mix | 0–100% | 100% | Linear dry/wet blend. |
 | Oversampling | 1x, 2x, 4x | 2x | Antialias filtering around the multiplier. |
 | DC block | 0–20 Hz | 15 Hz | Final first-order high-pass filter; 0 Hz bypasses it. |
